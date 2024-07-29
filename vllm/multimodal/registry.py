@@ -9,6 +9,7 @@ from vllm.logger import init_logger
 from .base import (MultiModalDataDict, MultiModalInputMapper, MultiModalInputs,
                    MultiModalPlugin, MultiModalTokensCalc)
 from .image import ImagePlugin
+from .audio import AudioPlugin
 
 logger = init_logger(__name__)
 
@@ -19,7 +20,7 @@ class MultiModalRegistry:
     :class:`~vllm.multimodal.MultiModalPlugin` for each modality.
     """
 
-    DEFAULT_PLUGINS = (ImagePlugin(), )
+    DEFAULT_PLUGINS = (ImagePlugin(), AudioPlugin())
 
     def __init__(
             self,
@@ -75,6 +76,17 @@ class MultiModalRegistry:
         """
         return self.register_input_mapper("image", mapper)
 
+    def register_audio_input_mapper(
+            self,
+            mapper: Optional[MultiModalInputMapper] = None,
+    ):
+        """
+        Register an input mapper for audio data to a model class.
+
+        See :meth:`MultiModalPlugin.register_input_mapper` for more details.
+        """
+        return self.register_input_mapper("audio", mapper)
+
     def map_input(self, model_config: ModelConfig,
                   data: MultiModalDataDict) -> MultiModalInputs:
         """
@@ -129,6 +141,16 @@ class MultiModalRegistry:
         input to the language model for a model class.
         """
         return self.register_max_multimodal_tokens("image", max_mm_tokens)
+
+    def register_max_audio_tokens(
+            self,
+            max_mm_tokens: Optional[MultiModalTokensCalc] = None,
+    ):
+        """
+        Register the maximum number of audio tokens
+        input to the language model for a model class.
+        """
+        return self.register_max_multimodal_tokens("audio", max_mm_tokens)
 
     def get_max_multimodal_tokens(self, model_config: ModelConfig) -> int:
         """

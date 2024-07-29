@@ -64,6 +64,8 @@ _GENERATION_MODELS = {
     "Phi3ForCausalLM": ("llama", "LlamaForCausalLM"),
     "Phi3VForCausalLM": ("phi3v", "Phi3VForCausalLM"),
     "QWenLMHeadModel": ("qwen", "QWenLMHeadModel"),
+    "Qwen2AudioForConditionalGeneration":
+    ("qwen2_audio", "Qwen2AudioForConditionalGeneration"),
     "Qwen2ForCausalLM": ("qwen2", "Qwen2ForCausalLM"),
     "Qwen2MoeForCausalLM": ("qwen2_moe", "Qwen2MoeForCausalLM"),
     "RWForCausalLM": ("falcon", "FalconForCausalLM"),
