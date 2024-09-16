@@ -20,7 +20,7 @@ from typing_extensions import Required, TypedDict
 from vllm.config import ModelConfig
 from vllm.logger import init_logger
 from vllm.multimodal import MultiModalDataDict
-from vllm.multimodal.utils import async_get_and_parse_image
+from vllm.multimodal.utils import async_get_and_parse_image, async_get_and_parse_audio
 
 logger = init_logger(__name__)
 
@@ -112,6 +112,19 @@ def _image_token_str(model_config: ModelConfig,
     raise TypeError(f"Unknown model type: {model_type}")
 
 
+@lru_cache(maxsize=None)
+def _audio_token_str(model_config: ModelConfig,
+                     tokenizer: PreTrainedTokenizer) -> Optional[str]:
+    # TODO: Let user specify how to insert image tokens into prompt
+    # (similar to chat template)
+    model_type = model_config.hf_config.model_type
+    if model_type == "qwen2_audio":
+        # Workaround since this token is not defined in the tokenizer
+        return "<|audio_bos|><|AUDIO|><|audio_eos|>"
+
+    raise TypeError(f"Unknown model type: {model_type}")
+
+
 # TODO: Let user specify how to insert image tokens into prompt
 # (similar to chat template)
 def _get_full_image_text_prompt(image_token_str: str, text_prompt: str) -> str:
@@ -122,6 +135,16 @@ def _get_full_image_text_prompt(image_token_str: str, text_prompt: str) -> str:
     return f"{image_token_str}\n{text_prompt}"
 
 
+# TODO: Let user specify how to insert audio tokens into prompt
+# (similar to chat template)
+def _get_full_audio_text_prompt(audio_token_str: str, text_prompt: str) -> str:
+    """Combine audio and text prompts for audio language model"""
+
+    # NOTE: For now we assume all model architectures use the same
+    # audio + text prompt format. This may change in the future.
+    return f"{audio_token_str}\n{text_prompt}"
+
+
 def _parse_chat_message_content_parts(
     role: str,
     parts: Iterable[ChatCompletionContentPartParam],
@@ -130,7 +153,7 @@ def _parse_chat_message_content_parts(
 ) -> ChatMessageParseResult:
     texts: List[str] = []
     mm_futures: List[Awaitable[MultiModalDataDict]] = []
-
+    mm_type = None
     for part in parts:
         part_type = part["type"]
         if part_type == "text":
@@ -151,23 +174,45 @@ def _parse_chat_message_content_parts(
 
             image_future = async_get_and_parse_image(image_url["url"])
             mm_futures.append(image_future)
+            mm_type = 'image_url'
+        elif part_type == "audio":
+            if len(mm_futures) > 0:
+                raise NotImplementedError(
+                    "Multiple 'audio_url' input is currently not supported.")
+
+            audio_future = async_get_and_parse_audio(part["audio_url"])
+            mm_futures.append(audio_future)
+            mm_type = 'audio'
         else:
             raise NotImplementedError(f"Unknown part type: {part_type}")
 
     text_prompt = "\n".join(texts)
 
     if mm_futures:
-        image_token_str = _image_token_str(model_config, tokenizer)
-        if image_token_str is not None:
-            if image_token_str in text_prompt:
-                logger.warning(
-                    "Detected image token string in the text prompt. "
-                    "Skipping prompt formatting.")
-            else:
-                text_prompt = _get_full_image_text_prompt(
-                    image_token_str=image_token_str,
-                    text_prompt=text_prompt,
-                )
+        if mm_type == 'image_url':
+            image_token_str = _image_token_str(model_config, tokenizer)
+            if image_token_str is not None:
+                if image_token_str in text_prompt:
+                    logger.warning(
+                        "Detected image token string in the text prompt. "
+                        "Skipping prompt formatting.")
+                else:
+                    text_prompt = _get_full_image_text_prompt(
+                        image_token_str=image_token_str,
+                        text_prompt=text_prompt,
+                    )
+        elif mm_type == 'audio':
+            audio_token_str = _audio_token_str(model_config, tokenizer)
+            if audio_token_str is not None:
+                if audio_token_str in text_prompt:
+                    logger.warning(
+                        "Detected audio token string in the text prompt. "
+                        "Skipping prompt formatting.")
+                else:
+                    text_prompt = _get_full_audio_text_prompt(
+                        audio_token_str=audio_token_str,
+                        text_prompt=text_prompt,
+                    )
 
     messages = [ConversationMessage(role=role, content=text_prompt)]
 
