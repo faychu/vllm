@@ -3,7 +3,7 @@ from typing import (AsyncGenerator, AsyncIterator, Awaitable, Dict, List,
                     Optional)
 from typing import Sequence as GenericSequence
 from typing import Union
-
+import asyncio
 from fastapi import Request
 from transformers import PreTrainedTokenizer
 
@@ -123,11 +123,21 @@ class OpenAIServingChat(OpenAIServing):
         mm_data: Optional[MultiModalDataDict] = None
         try:
             if len(mm_futures):
-                # since we support only single mm data currently
-                assert len(
-                    mm_futures
-                ) == 1, "Multiple 'image_url' input is currently not supported."
-                mm_data = await mm_futures[0]
+                # 使用 asyncio.gather 来并发地运行所有 coroutine
+                results = await asyncio.gather(*mm_futures)
+                if list(results[0].keys()) == ['audio']:
+                    # mm_data = {'audio': [data.value for data in mm_futures]}
+                    mm_data_values = []
+                    for result in results:
+                        for key, value in result.items():
+                            mm_data_values.append(value)
+                    mm_data = {'audio': mm_data_values}
+                else:
+                    # since we support only single mm data currently
+                    assert len(
+                        mm_futures
+                    ) == 1, "Multiple 'image_url' input is currently not supported."
+                    mm_data = await mm_futures[0]
         except Exception as e:
             logger.error("Error in loading multi-modal data: %s", e)
             return self.create_error_response(str(e))

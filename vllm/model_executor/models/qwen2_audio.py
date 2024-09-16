@@ -107,14 +107,22 @@ def get_max_qwen2_audio_audio_tokens(ctx: InputContext) -> int:
 
 def input_processor_for_qwen2_audio(ctx: InputContext, llm_inputs: LLMInputs) -> LLMInputs:
     multi_modal_data = llm_inputs.get("multi_modal_data")
+
+    audios = []
+    for data in multi_modal_data['audio']:
+        data = np.array(data, dtype=np.float32)
+        audios.append(data)
     if multi_modal_data is None or "audio" not in multi_modal_data:
         return llm_inputs
 
-    audios = multi_modal_data['audio']
+    # 更改原先的audio值
+    multi_modal_data['audio'] = audios
+    # audios = multi_modal_data['audio']
     processor = cached_get_processor(ctx.model_config.model)
 
     audio_inputs = processor.feature_extractor(
-        audios, sampling_rate=16000, return_attention_mask=True, padding="max_length")
+        audios, sampling_rate=processor.feature_extractor.sampling_rate, return_attention_mask=True, padding="max_length")
+        # audios, sampling_rate=16000, return_attention_mask=True, padding="max_length")
     if not audios:
         return llm_inputs
 

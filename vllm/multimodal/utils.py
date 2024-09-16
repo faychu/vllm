@@ -1,11 +1,11 @@
 import base64
 from io import BytesIO
 from typing import Union
-
+import requests
 from PIL import Image
-
+from transformers.pipelines.audio_utils import ffmpeg_read
 from vllm.connections import global_http_connection
-from vllm.envs import VLLM_IMAGE_FETCH_TIMEOUT
+from vllm.envs import VLLM_IMAGE_FETCH_TIMEOUT, VLLM_AUDIO_FETCH_TIMEOUT
 from vllm.multimodal.base import MultiModalDataDict
 
 
@@ -95,3 +95,64 @@ def rescale_image_size(image: Image.Image, size_factor: float) -> Image.Image:
     new_width = int(image.width * size_factor)
     new_height = int(image.height * size_factor)
     return image.resize((new_width, new_height))
+
+
+def _load_audio_from_bytes(b: bytes):
+    audio = ffmpeg_read(b, sampling_rate=16000)
+    return audio
+
+
+def _load_audio_from_data_url(audio_url: str):
+    # Only split once and assume the second part is the base64 encoded audio
+    _, audio_base64 = audio_url.split(",", 1)
+    return load_audio_from_base64(audio_base64)
+
+
+async def fetch_audio(audio_url: str):
+    """
+    Asynchronously load a audio from a HTTP or base64 data URL.
+
+    """
+    if audio_url.startswith('http'):
+        # audio_raw = await global_http_connection.async_get_bytes(
+        #     audio_url, timeout=VLLM_AUDIO_FETCH_TIMEOUT)
+        audio_raw = requests.get(audio_url).content
+        audio = _load_audio_from_bytes(audio_raw)
+
+    elif audio_url.startswith('data:image'):
+        audio = _load_audio_from_data_url(audio_url)
+    else:
+        raise ValueError("Invalid 'audio_url': A valid 'audio_url' must start "
+                         "with either 'data:image' or 'http'.")
+
+    return audio
+
+
+async def async_fetch_audio(audio_url: str):
+    """
+    Asynchronously load audio from a HTTP or base64 data URL.
+
+    """
+    if audio_url.startswith('http'):
+        # audio_raw = await global_http_connection.async_get_bytes(
+        #     audio_url, timeout=VLLM_AUDIO_FETCH_TIMEOUT)
+        audio_raw = requests.get(audio_url).content
+        audio = _load_audio_from_bytes(audio_raw)
+    elif audio_url.startswith('data:audio'):
+        audio = _load_audio_from_data_url(audio_url)
+    else:
+        raise ValueError("Invalid 'audio_url': A valid 'audio_url' must start "
+                         "with either 'data:image' or 'http'.")
+
+    return audio
+
+
+async def async_get_and_parse_audio(audio_url: str) -> MultiModalDataDict:
+    audio = await async_fetch_audio(audio_url)
+    return {"audio": audio}
+
+
+def load_audio_from_base64(audio: Union[bytes, str]):
+    """Load image from base64 format."""
+    return _load_audio_from_bytes(base64.b64decode(audio))
+
